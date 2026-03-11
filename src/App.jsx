@@ -39,9 +39,9 @@ function PublicLayout({ children }) {
   // --- 2. Title Change Logic ---
   useEffect(() => {
     if (isAdminPath) {
-      document.title = "XpertAI Global Admin";
+      document.title = "XpertAI Global Admin V2";
     } else {
-      document.title = "XpertAI Global";
+      document.title = "XpertAI Global V2";
     }
   }, [isAdminPath]); // जब भी path admin/non-admin में बदलेगा, title अपडेट होगा
   // -----------------------------
