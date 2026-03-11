@@ -1,0 +1,104 @@
+name: Deploy Frontend
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run React Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test -- --watchAll=false --passWithNoTests
+        env:
+          CI: true
+
+  build-and-deploy:
+    name: Build and Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create .env file
+        run: |
+          cat > .env << EOF2
+          REACT_APP_API_URL=${{ secrets.REACT_APP_API_URL }}
+          REACT_APP_API_BASE_URL=${{ secrets.REACT_APP_API_URL }}
+          API_BASE_FALLBACK=${{ secrets.REACT_APP_API_URL }}
+          REACT_APP_ADMIN_USERNAME=admin
+          REACT_APP_ADMIN_PASSWORD=XpeertLand@123
+          EOF2
+
+      - name: Build React app
+        run: npm run build
+        env:
+          NODE_OPTIONS: "--max_old_space_size=1024"
+          CI: false
+
+      - name: Copy build to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "build/*"
+          target: "/tmp/frontend-build"
+          strip_components: 1
+
+      - name: Deploy on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            sudo cp -r /tmp/frontend-build/* /usr/share/nginx/html/
+            sudo chown -R www-data:www-data /usr/share/nginx/html/
+            rm -rf /tmp/frontend-build
+            sudo nginx -t
+            sudo systemctl reload nginx
+            echo "=== Frontend deployment complete ==="
+
+      - name: Notify Slack on Success
+        if: success() && secrets.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {"text": "✅ *Frontend deployed!*\nRepo: ${{ github.repository }}\nBy: ${{ github.actor }}"}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify Slack on Failure
+        if: failure() && secrets.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {"text": "❌ *Frontend FAILED!*\nCheck: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
