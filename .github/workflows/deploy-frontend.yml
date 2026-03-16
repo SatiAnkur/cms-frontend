@@ -2,27 +2,27 @@ name: Deploy Frontend
 
 on:
   push:
-    branches:
-      - master
+    branches: [ master ]
 
 jobs:
   deploy:
+
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v4
+    - name: SSH Deploy
+      uses: appleboy/ssh-action@v0.1.7
 
-      - name: Deploy Frontend
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            cd /home/ubuntu/cms-project
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ubuntu
+        key: ${{ secrets.EC2_SSH_KEY }}
 
-            git pull origin main
+        script: |
+          cd /home/ubuntu/frontend-app
 
-            docker compose build frontend
-            docker compose up -d frontend
+          git pull origin main
+          npm install
+          npm run build
+
+          sudo systemctl restart nginx
